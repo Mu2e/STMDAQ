@@ -1,4 +1,4 @@
 # STM DAQ
+STM DAQ software for the Mu2e experiment.
 
-STM DAQ software for the Mu2e Experiment.
-
+Please see the wiki to get started: https://github.com/Mu2e/STMDAQ/wiki
