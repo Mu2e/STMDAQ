@@ -1,0 +1,4 @@
+- To build:
+  - mkdir build
+  - cd build && cmake .. && make
+  - ./zero_suppression
