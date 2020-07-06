@@ -2,18 +2,71 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <stdint.h>
 
 #define LINE_LENGTH 10000
 #define WF_LENGTH 1019
+#define PRE 256
+#define POST 256
 
-void importWaveform(char * line, int * wf);
-void printWaveform(int * wf, int len);
-float stddev(int data[], int len);
-float mean(int data[], int len);
-void printWindow(int * data, int len);
-int signalWindow(int * input, int inputLength, int * output, int outputMinLength,
-                 int lag, float threshold, float influence);
+void importWaveform(char * line,  uint16_t * wf);
+void printWaveform(uint16_t * wf, uint16_t len);
+void printWindow(uint16_t * wf, uint16_t len);
+int findRisingEdge(uint16_t * wf, uint16_t len, uint16_t downSampling,
+      uint16_t lag, float threshold, float influence,
+      uint16_t * output) {
 
+   uint64_t mean = 0;
+   int height = 0;
+   uint64_t variance = 0;
+
+   // calculate first mean and variance
+   for (uint16_t i = 0; i < lag * downSampling; i+= downSampling)
+      mean += wf[i];
+   mean /= lag;
+
+   for (uint16_t i = 0; i < lag * downSampling; i+= downSampling)
+      variance += (wf[i] - mean) * (wf[i] - mean);
+   variance /= lag;
+
+   int foundEdge = 0;
+   uint16_t edgeStart = 0;
+   uint16_t nSamplesInEdge = 0;
+
+   for (uint16_t i = lag * downSampling; i < len; i+= downSampling) {
+      uint64_t oldMean = mean;
+      height = wf[i] - oldMean;
+
+      if ((height * height > variance * threshold * threshold) && (height >= 0)){
+         if (foundEdge == 0) {
+            foundEdge = 1;
+            nSamplesInEdge = 1;
+         }
+         else {
+            nSamplesInEdge++;
+         }
+      }
+
+      if (nSamplesInEdge == 2) {
+         uint16_t start, stop;
+         if (i - downSampling - PRE < 0)
+            start = 0;
+         else
+            start = i - downSampling - PRE;
+
+         if (i - downSampling + POST >= len)
+            stop = len;
+         else
+            stop = i - downSampling + POST;
+
+         memcpy(output, wf + start, (stop - start) * sizeof(uint16_t));
+         return (stop - start);
+
+         /* return i - downSampling; */
+      }
+   }
+   return 0;
+}
 
 int main() {
     FILE *fp = fopen("../liverpoolPulses.txt", "r");
@@ -23,122 +76,44 @@ int main() {
     }
 
     char line[LINE_LENGTH];
-    int wf[WF_LENGTH];
+    uint16_t wf[WF_LENGTH];
 
     fgets(line, sizeof(line), fp);
     importWaveform(line, wf);
     printWaveform(wf, 20);
 
-    int output[WF_LENGTH];
-    int len = WF_LENGTH;
-    int outputLen = signalWindow(wf, len, output, 20, 100, 5., 0.01);
+    uint16_t output[WF_LENGTH];
+    int outputLen = findRisingEdge(wf, WF_LENGTH, 4, 8, 4.0, 0., output);
 
-    printWindow(output, outputLen);
+    printWaveform(output, outputLen);
+
     return 0;
 }
 
-
-
-float mean(int data[], int len) {
-    float sum = 0.0;
-
-    int i;
-    for(i=0; i<len; ++i)
-        sum += data[i];
-
-    return sum/len;
-}
-
-float stddev(int data[], int len) {
-    float the_mean = mean(data, len);
-    float standardDeviation = 0.0;
-
-    int i;
-    for(i=0; i<len; ++i) {
-        standardDeviation += pow(data[i] - the_mean, 2);
-    }
-
-    return sqrt(standardDeviation/len);
-}
-
-void importWaveform(char * line, int * wf){
+void importWaveform(char * line, uint16_t * wf){
     char * pch;
     pch = strtok(line, " ");
 
     int i = 0;
     while ((pch != NULL) || (i == WF_LENGTH - 1)){
-        sscanf(pch, "%d", &wf[i]);
+        sscanf(pch, "%hu", &wf[i]);
         i ++;
         pch = strtok(NULL, " ");
     }
 }
 
-void printWaveform(int * wf, int len){
-    for (int i = 0; i < len; ++i) {
+void printWaveform(uint16_t * wf, uint16_t len){
+    for (uint16_t i = 0; i < len; ++i) {
         printf("%d ", wf[i]);
     }
     printf("\n");
 }
 
-void printWindow(int *data, int len) {
-    for (int i = 0; i < len; ++i) {
+void printWindow(uint16_t *data, uint16_t len) {
+    for (uint16_t i = 0; i < len; ++i) {
         if (data[i] != 0){
             printf("%d: %d\n", i, data[i]);
         }
     }
 }
 
-int signalWindow(int *input, int inputLength, int *output, int outputMinLength,
-        int lag, float threshold, float influence) {
-
-//    int tempOutput[WF_LENGTH];
-    memset(output, 0, sizeof(int) * inputLength);
-    int filteredData[inputLength];
-    memcpy(filteredData, input, sizeof(int) * inputLength);
-
-    float avgFilter[inputLength];
-    float stdFilter[inputLength];
-
-    avgFilter[lag - 1] = mean(input, lag);
-    stdFilter[lag - 1] = stddev(input, lag);
-
-    int totStart = -1; // start of the time over threshold
-    int outputLength = 0;
-
-    for (int i = lag; i < inputLength; i++) {
-        if (fabsf(input[i] - avgFilter[i - 1]) > threshold * stdFilter[i - 1]) {
-            outputLength ++;
-            if (totStart == -1)
-                totStart = i; // mark the first sample over threshold
-
-            if (i - totStart == outputLength) { // check for consecutive samples
-            }
-            else { // if not, reset counters
-                totStart = i;
-                outputLength = 0;
-            }
-
-//            if (input[i] > avgFilter[i - 1]) {
-//                tempOutput[i] = 1;
-//            } else {
-//                tempOutput[i] = -1;
-//            }
-            filteredData[i] = influence * input[i] + (1 - influence) * filteredData[i - 1];
-        } else {
-//            tempOutput[i] = 0;
-        }
-
-        avgFilter[i] = mean(filteredData + i - lag, lag);
-        stdFilter[i] = stddev(filteredData + i - lag, lag);
-    }
-
-    if (outputLength >= outputMinLength){ // only export if longer than minimum length, add lag window as presamples
-        outputLength += lag;
-        memcpy(output, input + totStart - lag, sizeof(int) * outputLength);
-    }
-    else {
-        outputLength = 0;
-    }
-
-    return outputLength;
-}
