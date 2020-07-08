@@ -77,6 +77,7 @@ void printWindow(uint16_t *data, uint16_t len) {
 uint16_t findRisingEdge(uint16_t * wf, uint16_t len,
       uint16_t windowLen, float threshold, uint16_t * output) {
 
+   // have to be signed numbers so that the arithmetic below works correctly
    int64_t ped = 0;
    int64_t var = 0;
 
