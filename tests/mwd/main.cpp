@@ -7,7 +7,7 @@
 
 int main(int argc, char *argv[])
 {
-  std::string data = "/Users/nam/work/mu2e/STM/liverpool-data/100pulses.txt";
+  std::string data = "../100pulses.txt";
   if (argc >= 2) {
     data = argv[1];
   }
@@ -31,7 +31,7 @@ int main(int argc, char *argv[])
     Waveform mwd = MovingAverage(OffsetDifferentiate(Deconvolute(wf0, f), offset), width);
 
     // Print(wf0);
-    // Print(mwd);
+    Print(mwd);
   }
 
   return 0;
